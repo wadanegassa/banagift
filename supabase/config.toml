@@ -1,0 +1,15 @@
+# Minimal Supabase CLI project config.
+# Link with: supabase link --project-ref <ref>
+# Apply migrations with: supabase db push
+
+[project]
+id = "atelier-gifts"
+
+[api]
+enabled = true
+
+[db]
+major_version = 15
+
+[storage]
+enabled = true
