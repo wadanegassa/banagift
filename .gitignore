@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+build/
+*.tsbuildinfo
+
+# Environment — never commit secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+!client/.env.example
+!admin/.env.example
+!server/.env.example
+# PWA/Vite service worker build artifacts
+**/dev-dist/
+
+# Logs & coverage
+logs/
+*.log
+coverage/
+.nyc_output/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Test / tooling
+playwright-report/
+test-results/
+.turbo/
+
+# Uploads (local mock storage)
+server/uploads/
