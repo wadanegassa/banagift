@@ -15,26 +15,27 @@
 ## Table of contents
 
 1. [Product overview](#1-product-overview)
-2. [Why customers have no login](#2-why-customers-have-no-login)
-3. [Roles](#3-roles)
-4. [Customer platform — features & pages](#4-customer-platform--features--pages)
-5. [Admin platform — features & pages](#5-admin-platform--features--pages)
-6. [End-to-end flows](#6-end-to-end-flows)
-7. [Business rules](#7-business-rules)
-8. [Architecture & tech stack](#8-architecture--tech-stack)
-9. [Repository structure](#9-repository-structure)
-10. [API reference](#10-api-reference)
-11. [Database & storage](#11-database--storage)
-12. [Local development](#12-local-development)
-13. [Environment variables](#13-environment-variables)
-14. [Supabase setup](#14-supabase-setup)
-15. [First admin account](#15-first-admin-account)
-16. [Scripts, tests & builds](#16-scripts-tests--builds)
-17. [PWA](#17-pwa)
-18. [Design & branding](#18-design--branding)
-19. [Security notes](#19-security-notes)
-20. [Deployment](#20-deployment)
-21. [What is intentionally out of scope](#21-what-is-intentionally-out-of-scope)
+2. [How to run (step by step)](#2-how-to-run-step-by-step)
+3. [Technologies in detail](#3-technologies-in-detail)
+4. [Why customers have no login](#4-why-customers-have-no-login)
+5. [Roles](#5-roles)
+6. [Customer platform — features & pages](#6-customer-platform--features--pages)
+7. [Admin platform — features & pages](#7-admin-platform--features--pages)
+8. [End-to-end flows](#8-end-to-end-flows)
+9. [Business rules](#9-business-rules)
+10. [Architecture](#10-architecture)
+11. [Repository structure](#11-repository-structure)
+12. [API reference](#12-api-reference)
+13. [Database & storage](#13-database--storage)
+14. [Environment variables](#14-environment-variables)
+15. [Supabase setup](#15-supabase-setup)
+16. [First admin account](#16-first-admin-account)
+17. [Scripts, tests & builds](#17-scripts-tests--builds)
+18. [PWA](#18-pwa)
+19. [Design & branding](#19-design--branding)
+20. [Security notes](#20-security-notes)
+21. [Deployment](#21-deployment)
+22. [What is intentionally out of scope](#22-what-is-intentionally-out-of-scope)
 
 ---
 
@@ -52,7 +53,236 @@ BanaGifts combines:
 
 ---
 
-## 2. Why customers have no login
+## 2. How to run (step by step)
+
+### Requirements
+
+| Tool | Version | Why |
+|------|---------|-----|
+| **Node.js** | 18+ (22+ recommended) | Runs API and Vite apps |
+| **pnpm** | 9+ | Monorepo package manager |
+| **Git** | any recent | Clone the repo |
+| **Supabase account** | optional for first run | Needed for real DB/auth; skip with mock mode |
+
+Install pnpm if needed:
+
+```bash
+npm install -g pnpm
+```
+
+### Option A — Fastest demo (mock database, no Supabase)
+
+Uses an in-memory catalog and orders. Good for UI demos.
+
+```bash
+# 1. Clone
+git clone https://github.com/wadanegassa/banagifts.git
+cd banagifts
+
+# 2. Install dependencies (all workspaces)
+pnpm install
+
+# 3. Copy env examples
+cp server/.env.example server/.env
+cp client/.env.example client/.env
+cp admin/.env.example admin/.env
+
+# 4. Keep mock mode on the server
+# In server/.env make sure:
+#   USE_MOCK_DB=true
+
+# 5. Start the three apps (three terminals)
+pnpm dev:server    # API  → http://localhost:4000
+pnpm dev:client    # Shop → http://localhost:5173
+pnpm dev:admin     # Admin → http://localhost:5175
+```
+
+Or from each package folder:
+
+```bash
+cd server && npm run dev
+cd client && npm run dev
+cd admin && npm run dev
+```
+
+| App | URL | What to open |
+|-----|-----|----------------|
+| Customer storefront | http://localhost:5173 | Gifts, checkout, My Orders |
+| Admin dashboard | http://localhost:5175 | Login → orders & products |
+| API health check | http://localhost:4000/api/health | Should return `"status":"ok"` |
+
+In mock mode, admin can use the **dev mock login** if `VITE_USE_MOCK_AUTH=true` in `admin/.env`.
+
+### Option B — Full real stack (Supabase)
+
+1. Create a project at [supabase.com](https://supabase.com/dashboard).  
+2. Apply SQL migrations from `supabase/migrations/` (SQL Editor or `supabase db push`).  
+3. Optionally run `supabase/seed.sql` on a **dev** database only.  
+4. Create an Auth user and promote them to admin (see [First admin account](#16-first-admin-account)).  
+5. Fill env files:
+
+**`server/.env`**
+```env
+PORT=4000
+NODE_ENV=development
+CORS_ORIGIN=http://localhost:5173,http://localhost:5175,http://127.0.0.1:5173,http://127.0.0.1:5175
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+USE_MOCK_DB=false
+```
+
+**`client/.env`** and **`admin/.env`**
+```env
+VITE_API_BASE_URL=
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_USE_MOCK_AUTH=false
+```
+
+(`admin/.env` may also set `VITE_STOREFRONT_URL=http://localhost:5173`.)
+
+6. Start the three apps the same way as Option A.
+
+### How the apps talk to each other while developing
+
+- Storefront and admin call **`/api/...`** on their own origin (5173 / 5175).  
+- Vite **proxies** `/api` → `http://localhost:4000`.  
+- You do **not** need to set `VITE_API_BASE_URL` for local dev.
+
+### Verify it works
+
+1. Open http://localhost:5173 → browse gifts → add to cart → checkout.  
+2. Call CTAs should show the shop phone from settings.  
+3. Open http://localhost:5175 → sign in → see the new order.  
+4. Update status → check **My Orders** / **Track** on the storefront.
+
+### Production build (local preview)
+
+```bash
+pnpm --filter @atelier/server build
+pnpm --filter @atelier/client build
+pnpm --filter @atelier/admin build
+
+# API
+cd server && NODE_ENV=production USE_MOCK_DB=false node dist/index.js
+
+# Static apps (example)
+cd client && pnpm preview    # preview storefront build
+cd admin && pnpm preview     # preview admin build
+```
+
+---
+
+## 3. Technologies in detail
+
+### High-level stack
+
+| Area | Technology | Role in BanaGifts |
+|------|------------|-------------------|
+| Language | **TypeScript** | Typed frontend + backend |
+| Customer UI | **React 18** + **Vite 5** | Storefront SPA |
+| Admin UI | **React 18** + **Vite 5** | Admin SPA (separate port) |
+| Styling | **Tailwind CSS 3** | Layout, responsive UI, brand colors |
+| Routing | **React Router 6** | Pages (`/gifts`, `/orders`, `/admin` routes, etc.) |
+| Server state | **TanStack Query (React Query) 5** | Fetch/cache catalog, orders, settings |
+| Forms | **React Hook Form** + **Zod** | Checkout & admin forms with validation |
+| Icons | **Lucide React** | UI icons |
+| SEO / titles | **react-helmet-async** | Page `<title>` and meta |
+| API | **Node.js** + **Express 4** | REST API on port 4000 |
+| Validation (API) | **Zod** | Request body/query/params |
+| Auth / DB / files | **Supabase** | Postgres, Auth, Storage |
+| Security headers | **Helmet** | HTTP hardening |
+| CORS | **cors** | Allow storefront + admin origins |
+| Rate limiting | **express-rate-limit** | Protect order/track endpoints |
+| Uploads | **Multer** | Product image multipart upload |
+| Logging | **Pino** / **pino-http** | Structured request logs |
+| PWA | **vite-plugin-pwa** + **Workbox** | Installable storefront |
+| Monorepo | **pnpm workspaces** | `client`, `admin`, `server` packages |
+| Tests | **Vitest** (+ Testing Library on client) | Unit / API tests |
+| Dev runner (API) | **tsx watch** | Hot-reload TypeScript server |
+
+### Frontend technologies (storefront & admin)
+
+| Package | Purpose |
+|---------|---------|
+| `react` / `react-dom` | UI components and rendering |
+| `vite` | Fast dev server, HMR, production bundling |
+| `@vitejs/plugin-react` | React Fast Refresh |
+| `typescript` | Static typing |
+| `tailwindcss` + `postcss` + `autoprefixer` | Utility CSS pipeline |
+| `react-router-dom` | Client-side navigation |
+| `@tanstack/react-query` | Async data fetching, caching, retries |
+| `react-hook-form` | Performant forms |
+| `@hookform/resolvers` + `zod` | Schema-based form validation |
+| `@supabase/supabase-js` | Admin login session (and optional client config) |
+| `clsx` + `tailwind-merge` | Conditional class names (`cn()` helper) |
+| `lucide-react` | Consistent icon set |
+| `vite-plugin-pwa` | Manifest + service worker (storefront) |
+| `workbox-window` | PWA update / install helpers |
+
+**Storefront-only ideas:** guest cart in `localStorage`, My Orders phone in `localStorage`, tracking token in session, PWA install prompt.
+
+**Admin-only ideas:** JWT stored/synced with Supabase session, protected routes, image upload FormData to API.
+
+### Backend technologies (API)
+
+| Package | Purpose |
+|---------|---------|
+| `express` | HTTP routing and middleware |
+| `zod` | Validate all public/admin inputs |
+| `@supabase/supabase-js` | Service-role DB access + `auth.getUser(jwt)` |
+| `helmet` | Security headers; CORP set for cross-origin API use |
+| `cors` | Reflect allowed origins from `CORS_ORIGIN` |
+| `express-rate-limit` | General + order + track/my-orders limits |
+| `multer` | Memory upload for product images |
+| `dotenv` | Load `server/.env` |
+| `pino` / `pino-http` | JSON logs (phones redacted in logger config) |
+| `ws` | Polyfill/support for Supabase realtime on older Node |
+| `tsx` | Run/watch TypeScript in development |
+
+**API responsibilities:** create orders with server-side price recalculation, tracking, My Orders phone lookup, admin CRUD, status machine, payment/fulfillment updates, settings, image upload to Storage.
+
+### Data & cloud (Supabase)
+
+| Service | How BanaGifts uses it |
+|---------|------------------------|
+| **Postgres** | Products, categories, orders, settings, notes, history |
+| **Auth** | Admin email/password; JWT verified on `/api/admin/*` |
+| **Storage** | Public `product-images` bucket for gift photos |
+| **RLS** | Policies + `is_admin()`; privileged writes go through Express with service role |
+
+Alternative for demos: **`USE_MOCK_DB=true`** — in-memory store in `server/src/lib/mockDb.ts` (no cloud required).
+
+### Tooling & quality
+
+| Tool | Purpose |
+|------|---------|
+| `pnpm` | Install once, link workspaces (`@atelier/client`, `@atelier/admin`, `@atelier/server`) |
+| `vitest` | Server route tests + client unit tests |
+| `@testing-library/react` | Component tests (e.g. Navbar) |
+| `supertest` | HTTP assertions against Express app |
+| `tsc` | Typecheck / emit server `dist/` |
+
+### Ports & processes (mental model)
+
+```
+┌─────────────────┐     /api proxy      ┌──────────────────┐
+│  Vite Client    │ ──────────────────► │  Express API     │
+│  :5173          │                     │  :4000           │
+└─────────────────┘                     └────────┬─────────┘
+┌─────────────────┐     /api proxy               │
+│  Vite Admin     │ ──────────────────►          │
+│  :5175          │                              ▼
+└─────────────────┘                     ┌──────────────────┐
+                                        │  Supabase Cloud  │
+                                        │  DB · Auth · S3  │
+                                        └──────────────────┘
+```
+
+---
+
+## 4. Why customers have no login
 
 This is intentional for the Ethiopia / phone-first model:
 
@@ -66,7 +296,7 @@ Admin authentication uses **Supabase Auth** (email + password + JWT). The API ve
 
 ---
 
-## 3. Roles
+## 5. Roles
 
 | Role | App | Auth | What they do |
 |------|-----|------|----------------|
@@ -77,7 +307,7 @@ Admin authentication uses **Supabase Auth** (email + password + JWT). The API ve
 
 ---
 
-## 4. Customer platform — features & pages
+## 6. Customer platform — features & pages
 
 **Base URL (dev):** http://localhost:5173  
 
@@ -120,7 +350,7 @@ Home · Gifts · Cart · **Orders** · Contact
 
 ---
 
-## 5. Admin platform — features & pages
+## 7. Admin platform — features & pages
 
 **Base URL (dev):** http://localhost:5175  
 
@@ -174,7 +404,7 @@ Separate Vite app (not `/admin` on the storefront).
 
 ---
 
-## 6. End-to-end flows
+## 8. End-to-end flows
 
 ### A. Customer places an order
 
@@ -204,7 +434,7 @@ Browse gifts → Add to cart → Checkout
 
 ---
 
-## 7. Business rules
+## 9. Business rules
 
 - **Server-side pricing** — Unit prices come from the database; clients cannot underpay by sending fake prices.
 - **Unavailable products** — Cannot be ordered (`PRODUCT_UNAVAILABLE`).
@@ -216,7 +446,7 @@ Browse gifts → Add to cart → Checkout
 
 ---
 
-## 8. Architecture & tech stack
+## 10. Architecture
 
 ```
 Customer browser  →  Storefront (Vite/React :5173)  ─┐
@@ -227,21 +457,16 @@ Admin browser     →  Admin (Vite/React :5175)      ─┘         │
                                                               └ Storage (product images)
 ```
 
-In development, Vite **proxies** `/api` → `http://localhost:4000`, so the browser uses same-origin `/api/...`.
+- In development, Vite **proxies** `/api` → `http://localhost:4000`.
+- Public catalog may be readable under RLS; **order creation and all admin work go through Express**.
+- The Supabase **service role key stays on the server only**.
+- Guest tracking stores only the **SHA-256 hash** of the tracking token.
 
-| Layer | Technology |
-|-------|------------|
-| Storefront | React, TypeScript, Vite, Tailwind, React Router, TanStack Query, React Hook Form + Zod, PWA |
-| Admin | Same stack + Supabase Auth client |
-| API | Node.js, Express, Zod, Helmet, CORS, express-rate-limit, Pino |
-| Data | Supabase Postgres, RLS, Storage |
-| Money / dates | `Intl` with `ETB` / `en-ET` |
-| Monorepo | pnpm workspaces |
-| Tests | Vitest |
+For the full technology list, see [§3 Technologies in detail](#3-technologies-in-detail).
 
 ---
 
-## 9. Repository structure
+## 11. Repository structure
 
 ```
 banagifts/
@@ -258,7 +483,7 @@ banagifts/
 
 ---
 
-## 10. API reference
+## 12. API reference
 
 Base path: `/api`
 
@@ -295,7 +520,7 @@ Base path: `/api`
 
 ---
 
-## 11. Database & storage
+## 13. Database & storage
 
 ### Main tables
 
@@ -315,44 +540,9 @@ Base path: `/api`
 
 ---
 
-## 12. Local development
+## 14. Environment variables
 
-### Prerequisites
-
-- Node.js **18+** (22+ recommended)
-- **pnpm** 9+
-- Optional: Supabase project (or use mock DB)
-
-### Quick start (mock mode)
-
-```bash
-pnpm install
-
-cp server/.env.example server/.env
-cp client/.env.example client/.env
-cp admin/.env.example admin/.env
-
-# Three terminals:
-pnpm dev:server    # :4000
-pnpm dev:client    # :5173
-pnpm dev:admin     # :5175
-```
-
-Or from each folder: `npm run dev`.
-
-| App | URL |
-|-----|-----|
-| Storefront | http://localhost:5173 |
-| Admin | http://localhost:5175 |
-| API | http://localhost:4000/api/health |
-
-### Live Supabase mode
-
-Set `USE_MOCK_DB=false` and fill `SUPABASE_*` in `server/.env`. Set matching `VITE_SUPABASE_*` in `client/.env` and `admin/.env`. Set `VITE_USE_MOCK_AUTH=false`.
-
----
-
-## 13. Environment variables
+> Step-by-step run instructions are in [§2 How to run](#2-how-to-run-step-by-step).
 
 ### Server (`server/.env`)
 
@@ -393,7 +583,7 @@ Set `USE_MOCK_DB=false` and fill `SUPABASE_*` in `server/.env`. Set matching `VI
 
 ---
 
-## 14. Supabase setup
+## 15. Supabase setup
 
 1. Create a project at [supabase.com](https://supabase.com/dashboard).  
 2. Apply migrations:
@@ -415,7 +605,7 @@ More detail: [docs/SUPABASE.md](docs/SUPABASE.md).
 
 ---
 
-## 15. First admin account
+## 16. First admin account
 
 There is **no public admin registration**.
 
@@ -436,7 +626,7 @@ Change the default password before going live. Rotate the service role key if it
 
 ---
 
-## 16. Scripts, tests & builds
+## 17. Scripts, tests & builds
 
 | Command | Description |
 |---------|-------------|
@@ -459,7 +649,7 @@ pnpm --filter @atelier/client build
 
 ---
 
-## 17. PWA
+## 18. PWA
 
 The storefront is a Progressive Web App:
 
@@ -473,7 +663,7 @@ Production: serve `client/dist` over **HTTPS**.
 
 ---
 
-## 18. Design & branding
+## 19. Design & branding
 
 - **Brand:** BanaGifts  
 - **Logo:** Yellow background, black courier with cloche (fast delivery)  
@@ -485,7 +675,7 @@ Configurable brand strings live in **Admin → Settings** (`business_name`, phon
 
 ---
 
-## 19. Security notes
+## 20. Security notes
 
 - Service role key **only on the server**  
 - Admin routes require verified JWT + `admin` role  
@@ -497,7 +687,7 @@ Configurable brand strings live in **Admin → Settings** (`business_name`, phon
 
 ---
 
-## 20. Deployment
+## 21. Deployment
 
 High level:
 
@@ -512,7 +702,7 @@ Details: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
 
-## 21. What is intentionally out of scope
+## 22. What is intentionally out of scope
 
 | Not included | Why |
 |--------------|-----|
