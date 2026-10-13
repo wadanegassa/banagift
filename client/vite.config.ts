@@ -15,7 +15,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: [
-        'favicon.svg',
+        'logo.png',
+        'favicon.ico',
+        'favicon-32.png',
         'icons/apple-touch-icon.png',
         'robots.txt',
         'sitemap.xml',
@@ -33,6 +35,7 @@ export default defineConfig({
         lang: 'en',
         categories: ['shopping', 'lifestyle'],
         icons: [
+          { src: '/logo.png', sizes: '640x640', type: 'image/png', purpose: 'any' },
           { src: '/icons/icon-72.png', sizes: '72x72', type: 'image/png' },
           { src: '/icons/icon-96.png', sizes: '96x96', type: 'image/png' },
           { src: '/icons/icon-128.png', sizes: '128x128', type: 'image/png' },
