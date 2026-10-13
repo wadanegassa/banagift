@@ -4,7 +4,7 @@ import { config } from '../config.js';
 
 // Node 18 has no global WebSocket; supabase-js realtime expects one at construct time.
 if (typeof (globalThis as { WebSocket?: unknown }).WebSocket === 'undefined') {
-  (globalThis as { WebSocket: typeof WebSocket }).WebSocket = WebSocket as unknown as typeof WebSocket;
+  (globalThis as unknown as { WebSocket: typeof WebSocket }).WebSocket = WebSocket;
 }
 
 let adminClient: SupabaseClient | null = null;
