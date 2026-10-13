@@ -16,6 +16,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: [
         'logo.png',
+        'banagifts-tab-icon.png',
+        'banagifts-tab-icon-32.png',
         'favicon.ico',
         'favicon-32.png',
         'icons/apple-touch-icon.png',
@@ -94,9 +96,10 @@ export default defineConfig({
           },
         ],
       },
+      // Dev SW is easy to break when clearing caches; enable only for production builds.
+      // Run `pnpm --filter @atelier/client build` to generate the real service worker.
       devOptions: {
-        enabled: true,
-        type: 'module',
+        enabled: false,
       },
     }),
   ],

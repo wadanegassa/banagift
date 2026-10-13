@@ -13,6 +13,8 @@ export function PageMeta({ title, description, noIndex }: PageMetaProps) {
   return (
     <Helmet>
       <title>{fullTitle}</title>
+      <link rel="icon" type="image/png" href="/banagifts-tab-icon.png" />
+      <link rel="icon" type="image/png" sizes="32x32" href="/banagifts-tab-icon-32.png" />
       {description && <meta name="description" content={description} />}
       {noIndex && <meta name="robots" content="noindex, nofollow" />}
     </Helmet>
