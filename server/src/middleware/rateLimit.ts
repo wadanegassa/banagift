@@ -20,10 +20,9 @@ function buildLimiter(max: number, overrides: Partial<Options> = {}) {
     standardHeaders: true,
     legacyHeaders: false,
     handler: rateLimitHandler,
-    // Rate limiting is a production concern; disabling it under the test
-    // runner keeps the suite deterministic regardless of how many
-    // requests a given test file issues within the configured window.
-    skip: () => config.isTest,
+    // Rate limiting is a production concern; disable under the test runner
+    // and in mock DB mode so local demos / QA are not blocked mid-flow.
+    skip: () => config.isTest || config.useMockDb,
     ...overrides,
   });
 }
