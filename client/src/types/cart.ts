@@ -6,6 +6,8 @@ export interface CartItem {
   quantity: number;
   imageUrl: string | null;
   isAvailable: boolean;
+  /** Snapshot of remaining units when added/refreshed; caps cart quantity. */
+  stockQuantity: number;
 }
 
 export interface CartState {

@@ -75,7 +75,8 @@ function seedCategories(): Category[] {
 }
 
 function seedProducts(): Product[] {
-  const defs: Array<[string, string, string, string, string, number, boolean, boolean]> = [
+  // id, categoryId, name, slug, description, price, stock, isAvailable, isFeatured
+  const defs: Array<[string, string, string, string, string, number, number, boolean, boolean]> = [
     [
       'b1000000-0000-4000-8000-000000000001',
       'a1000000-0000-4000-8000-000000000001',
@@ -83,7 +84,7 @@ function seedProducts(): Product[] {
       'garden-rose-bouquet',
       'A generous hand-tied bouquet of garden roses in soft blush and ivory, finished with linen ribbon.',
       2800,
-
+      15,
       true,
       true,
     ],
@@ -94,7 +95,7 @@ function seedProducts(): Product[] {
       'wild-meadow-arrangement',
       'Seasonal wildflowers loosely arranged in a ceramic vessel — airy, informal, and bright.',
       2200,
-
+      20,
       true,
       true,
     ],
@@ -105,7 +106,7 @@ function seedProducts(): Product[] {
       'evening-indulgence-box',
       'Dark chocolate, honeycomb, and a small candle nestled in kraft and tissue.',
       3200,
-
+      15,
       true,
       true,
     ],
@@ -116,7 +117,7 @@ function seedProducts(): Product[] {
       'morning-ritual-set',
       'Loose-leaf tea, honey spoon, and a linen napkin — a gentle start.',
       1800,
-
+      12,
       true,
       false,
     ],
@@ -127,7 +128,7 @@ function seedProducts(): Product[] {
       'single-origin-truffles',
       'Twelve hand-rolled truffles from a single cacao origin, boxed for gifting.',
       1500,
-
+      20,
       true,
       true,
     ],
@@ -138,7 +139,7 @@ function seedProducts(): Product[] {
       'caramel-sea-salt-collection',
       'Soft caramels finished with flaky sea salt in a slim gift tin.',
       1200,
-
+      12,
       true,
       false,
     ],
@@ -149,7 +150,7 @@ function seedProducts(): Product[] {
       'birthday-bloom-and-treat',
       'A cheerful mixed bouquet paired with a small cake-slice chocolate bar.',
       2600,
-
+      20,
       true,
       true,
     ],
@@ -160,7 +161,7 @@ function seedProducts(): Product[] {
       'anniversary-keepsake-duo',
       'Two stem roses with a bottle of sparkling non-alcoholic aperitif and a handwritten card option.',
       3800,
-
+      15,
       true,
       true,
     ],
@@ -171,7 +172,7 @@ function seedProducts(): Product[] {
       'graduate-desk-set',
       'A leather notebook, pen, and congratulatory card arranged in a presentation box.',
       2400,
-
+      12,
       true,
       false,
     ],
@@ -182,7 +183,7 @@ function seedProducts(): Product[] {
       'monogram-candle-match-set',
       'Soy candle with optional monogram on the lid card, plus a brass match striker.',
       1600,
-
+      12,
       true,
       false,
     ],
@@ -193,7 +194,7 @@ function seedProducts(): Product[] {
       'celebration-balloon-cluster',
       'A refined cluster of matte balloons with a weight — available while stock lasts.',
       900,
-
+      0,
       false,
       false,
     ],
@@ -204,18 +205,20 @@ function seedProducts(): Product[] {
       'hostess-welcome-tray',
       'Crackers, olives, and a small cheese knife on a reusable wooden board.',
       2700,
+      3,
       true,
       false,
     ],
   ];
   const ts = now();
-  return defs.map(([id, categoryId, name, slug, description, price, isAvailable, isFeatured]) => ({
+  return defs.map(([id, categoryId, name, slug, description, price, stock, isAvailable, isFeatured]) => ({
     id,
     category_id: categoryId,
     name,
     slug,
     description,
     price,
+    stock_quantity: stock,
     is_available: isAvailable,
     is_featured: isFeatured,
     archived_at: null,
@@ -438,7 +441,14 @@ export const mockProducts = {
   },
   create(input: Omit<Product, 'id' | 'created_at' | 'updated_at' | 'archived_at'>): Product {
     const ts = now();
-    const product: Product = { id: randomUUID(), created_at: ts, updated_at: ts, archived_at: null, ...input };
+    const product: Product = {
+      id: randomUUID(),
+      created_at: ts,
+      updated_at: ts,
+      archived_at: null,
+      ...input,
+      stock_quantity: Math.max(0, Math.floor(input.stock_quantity ?? 0)),
+    };
     store.products.push(product);
     return product;
   },
@@ -446,10 +456,38 @@ export const mockProducts = {
     const product = store.products.find((p) => p.id === id);
     if (!product) return undefined;
     Object.assign(product, patch, { updated_at: now() });
+    if (typeof patch.stock_quantity === 'number' && patch.stock_quantity <= 0) {
+      product.stock_quantity = 0;
+      product.is_available = false;
+    }
     return product;
   },
   archive(id: string): Product | undefined {
     return mockProducts.update(id, { archived_at: now(), is_available: false });
+  },
+  /** Atomically reserve stock for an order line. Returns false if insufficient. */
+  decrementStock(id: string, quantity: number): boolean {
+    const product = store.products.find((p) => p.id === id);
+    if (!product || product.archived_at !== null || quantity < 1) return false;
+    if (product.stock_quantity < quantity) return false;
+    product.stock_quantity -= quantity;
+    if (product.stock_quantity <= 0) {
+      product.stock_quantity = 0;
+      product.is_available = false;
+    }
+    product.updated_at = now();
+    return true;
+  },
+  /** Restore stock when an order is cancelled. Re-opens availability if stock was empty. */
+  restoreStock(id: string, quantity: number): void {
+    const product = store.products.find((p) => p.id === id);
+    if (!product || quantity < 1) return;
+    const wasEmpty = product.stock_quantity <= 0;
+    product.stock_quantity += quantity;
+    if (wasEmpty && product.archived_at === null && product.stock_quantity > 0) {
+      product.is_available = true;
+    }
+    product.updated_at = now();
   },
 };
 

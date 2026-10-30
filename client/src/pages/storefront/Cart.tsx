@@ -25,17 +25,26 @@ export function Cart() {
       if (items.length === 0) return;
       setChecking(true);
       const unavailable = new Set<string>();
+      const adjustments: Array<{ productId: string; quantity: number }> = [];
       await Promise.all(
         items.map(async (item) => {
           try {
             const res = await api.products.get(item.slug);
-            if (!res.data.is_available) unavailable.add(item.productId);
+            const stock = res.data.stock_quantity ?? 0;
+            if (!res.data.is_available || stock < 1) {
+              unavailable.add(item.productId);
+              return;
+            }
+            if (item.quantity > stock) {
+              adjustments.push({ productId: item.productId, quantity: stock });
+            }
           } catch {
             unavailable.add(item.productId);
           }
         }),
       );
       if (!cancelled) {
+        for (const adj of adjustments) setQuantity(adj.productId, adj.quantity);
         setUnavailableIds(unavailable);
         setChecking(false);
       }

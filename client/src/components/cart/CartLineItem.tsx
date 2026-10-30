@@ -56,7 +56,8 @@ export function CartLineItem({ item, currency = 'ETB', onQuantityChange, onRemov
               type="button"
               onClick={() => onQuantityChange(item.quantity + 1)}
               aria-label="Increase quantity"
-              className="flex h-9 w-9 items-center justify-center text-text hover:bg-surface"
+              disabled={item.quantity >= (item.stockQuantity || 50)}
+              className="flex h-9 w-9 items-center justify-center text-text hover:bg-surface disabled:opacity-40"
             >
               <Plus className="h-3.5 w-3.5" />
             </button>

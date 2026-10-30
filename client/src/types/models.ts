@@ -50,6 +50,8 @@ export interface Product {
   slug: string;
   description: string;
   price: number;
+  /** Units remaining; 0 means out of stock. */
+  stock_quantity: number;
   is_available: boolean;
   is_featured: boolean;
   archived_at: string | null;

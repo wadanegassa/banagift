@@ -151,21 +151,29 @@ export interface CreateProductInput {
   slug: string;
   description: string;
   price: number;
+  stock_quantity: number;
   is_available: boolean;
   is_featured: boolean;
 }
 
 export async function createProduct(input: CreateProductInput): Promise<ProductWithRelations> {
+  const stock_quantity = Math.max(0, Math.floor(input.stock_quantity ?? 0));
+  const payload = {
+    ...input,
+    stock_quantity,
+    is_available: stock_quantity === 0 ? false : input.is_available,
+  };
+
   if (config.useMockDb) {
-    if (mockProducts.slugExists(input.slug)) {
+    if (mockProducts.slugExists(payload.slug)) {
       throw conflict('SLUG_TAKEN', 'A product with this slug already exists');
     }
-    const product = mockProducts.create(input);
+    const product = mockProducts.create(payload);
     return getProductById(product.id);
   }
 
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.from('products').insert(input).select('id').single();
+  const { data, error } = await supabase.from('products').insert(payload).select('id').single();
   if (error) {
     if (error.code === '23505') throw conflict('SLUG_TAKEN', 'A product with this slug already exists');
     throw error;
@@ -179,22 +187,32 @@ export interface UpdateProductInput {
   slug?: string;
   description?: string;
   price?: number;
+  stock_quantity?: number;
   is_available?: boolean;
   is_featured?: boolean;
 }
 
+function normalizeStockPatch<T extends { stock_quantity?: number; is_available?: boolean }>(patch: T): T {
+  if (typeof patch.stock_quantity !== 'number') return patch;
+  const stock = Math.max(0, Math.floor(patch.stock_quantity));
+  const next = { ...patch, stock_quantity: stock };
+  if (stock === 0) next.is_available = false;
+  return next;
+}
+
 export async function updateProduct(id: string, patch: UpdateProductInput): Promise<ProductWithRelations> {
+  const normalized = normalizeStockPatch(patch);
   if (config.useMockDb) {
     if (!mockProducts.findById(id)) throw notFound('Product not found');
-    if (patch.slug && mockProducts.slugExists(patch.slug, id)) {
+    if (normalized.slug && mockProducts.slugExists(normalized.slug, id)) {
       throw conflict('SLUG_TAKEN', 'A product with this slug already exists');
     }
-    mockProducts.update(id, patch);
+    mockProducts.update(id, normalized);
     return getProductById(id);
   }
 
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from('products').update(patch).eq('id', id);
+  const { error } = await supabase.from('products').update(normalized).eq('id', id);
   if (error) {
     if (error.code === '23505') throw conflict('SLUG_TAKEN', 'A product with this slug already exists');
     throw error;

@@ -132,6 +132,7 @@ export function Products() {
                   <th className="px-5 py-3">Product</th>
                   <th className="px-5 py-3">Category</th>
                   <th className="px-5 py-3">Price</th>
+                  <th className="px-5 py-3">Stock</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
@@ -153,6 +154,7 @@ export function Products() {
                       </td>
                       <td className="px-5 py-3">{product.category?.name ?? '—'}</td>
                       <td className="px-5 py-3">{formatMoney(product.price)}</td>
+                      <td className="px-5 py-3">{product.stock_quantity ?? 0}</td>
                       <td className="px-5 py-3">
                         <div className="flex gap-1.5">
                           <Badge tone={product.is_available ? 'success' : 'neutral'}>

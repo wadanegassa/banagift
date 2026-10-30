@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import { generateOrderReference, generateTrackingToken, hashTrackingToken } from '../lib/crypto.js';
+import { addCalendarDays, calendarDateInTimeZone, isValidIsoDate } from '../lib/dates.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { computeOrderTotals } from '../lib/money.js';
-import { mockOrders } from '../lib/mockDb.js';
+import { mockOrders, mockProducts } from '../lib/mockDb.js';
 import { canTransitionOrderStatus, ORDER_STATUS_TIMESTAMP_COLUMN } from '../lib/orderStatus.js';
 import { phoneMatchKey, phonesMatch } from '../lib/phone.js';
 import { getSupabaseAdmin } from '../lib/supabase.js';
@@ -19,6 +20,75 @@ import type {
 } from '../types/models.js';
 import { getProductsByIds } from './products.js';
 import { getAllSettings } from './settings.js';
+
+/** Merge duplicate product lines so stock checks and totals stay accurate. */
+function mergeOrderItems(items: OrderItemInput[]): OrderItemInput[] {
+  const merged = new Map<string, number>();
+  for (const item of items) {
+    merged.set(item.product_id, (merged.get(item.product_id) ?? 0) + item.quantity);
+  }
+  return [...merged.entries()].map(([product_id, quantity]) => ({ product_id, quantity }));
+}
+
+async function decrementStockForLines(
+  lines: Array<{ product_id: string; quantity: number }>,
+): Promise<void> {
+  if (config.useMockDb) {
+    const applied: Array<{ product_id: string; quantity: number }> = [];
+    for (const line of lines) {
+      const ok = mockProducts.decrementStock(line.product_id, line.quantity);
+      if (!ok) {
+        for (const prev of applied) mockProducts.restoreStock(prev.product_id, prev.quantity);
+        throw badRequest('INSUFFICIENT_STOCK', 'Not enough stock for one or more items', {
+          items: [{ product_id: line.product_id, reason: 'insufficient_stock' }],
+        });
+      }
+      applied.push(line);
+    }
+    return;
+  }
+
+  const supabase = getSupabaseAdmin();
+  const applied: Array<{ product_id: string; quantity: number }> = [];
+  for (const line of lines) {
+    const { error } = await supabase.rpc('decrement_product_stock', {
+      p_id: line.product_id,
+      p_qty: line.quantity,
+    });
+    if (error) {
+      for (const prev of applied) {
+        await supabase.rpc('restore_product_stock', { p_id: prev.product_id, p_qty: prev.quantity });
+      }
+      throw badRequest('INSUFFICIENT_STOCK', 'Not enough stock for one or more items', {
+        items: [{ product_id: line.product_id, reason: 'insufficient_stock' }],
+      });
+    }
+    applied.push(line);
+  }
+}
+
+async function restoreStockForOrder(orderId: string): Promise<void> {
+  if (config.useMockDb) {
+    for (const item of mockOrders.itemsForOrder(orderId)) {
+      if (item.product_id) mockProducts.restoreStock(item.product_id, item.quantity);
+    }
+    return;
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data: items, error } = await supabase
+    .from('order_items')
+    .select('product_id, quantity')
+    .eq('order_id', orderId);
+  if (error) throw error;
+  for (const item of items ?? []) {
+    if (!item.product_id) continue;
+    await supabase.rpc('restore_product_stock', {
+      p_id: item.product_id,
+      p_qty: item.quantity,
+    });
+  }
+}
 
 export interface OrderItemInput {
   product_id: string;
@@ -68,38 +138,44 @@ async function generateUniqueReference(): Promise<string> {
   throw new Error('Unable to generate a unique order reference');
 }
 
-function parseIsoDate(value: string): Date {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return date;
-}
-
-function startOfUtcDay(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
-
 export async function createOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
   if (input.items.length === 0) {
     throw badRequest('EMPTY_ORDER', 'An order must contain at least one item');
   }
 
+  const mergedItems = mergeOrderItems(input.items);
+
   // --- Recalculate everything from the database. Never trust client prices. ---
-  const uniqueProductIds = [...new Set(input.items.map((i) => i.product_id))];
+  const uniqueProductIds = mergedItems.map((i) => i.product_id);
   const products = await getProductsByIds(uniqueProductIds);
   const productsById = new Map(products.map((p) => [p.id, p]));
 
-  const unavailable: Array<{ product_id: string; reason: string }> = [];
-  for (const item of input.items) {
+  const unavailable: Array<{ product_id: string; reason: string; available?: number }> = [];
+  for (const item of mergedItems) {
     const product = productsById.get(item.product_id);
     if (!product) {
       unavailable.push({ product_id: item.product_id, reason: 'not_found' });
     } else if (product.archived_at !== null) {
       unavailable.push({ product_id: item.product_id, reason: 'archived' });
-    } else if (!product.is_available) {
-      unavailable.push({ product_id: item.product_id, reason: 'unavailable' });
+    } else if (!product.is_available || product.stock_quantity <= 0) {
+      unavailable.push({ product_id: item.product_id, reason: 'unavailable', available: 0 });
+    } else if (item.quantity > product.stock_quantity) {
+      unavailable.push({
+        product_id: item.product_id,
+        reason: 'insufficient_stock',
+        available: product.stock_quantity,
+      });
     }
   }
   if (unavailable.length > 0) {
-    throw badRequest('PRODUCT_UNAVAILABLE', 'One or more items are no longer available', { items: unavailable });
+    const hasStockIssue = unavailable.some((u) => u.reason === 'insufficient_stock');
+    throw badRequest(
+      hasStockIssue ? 'INSUFFICIENT_STOCK' : 'PRODUCT_UNAVAILABLE',
+      hasStockIssue
+        ? 'Not enough stock for one or more items'
+        : 'One or more items are no longer available',
+      { items: unavailable },
+    );
   }
 
   const settings = await getAllSettings();
@@ -111,22 +187,20 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       : Number(settings.free_delivery_threshold);
   const currency = typeof settings.currency === 'string' ? settings.currency : 'ETB';
 
-  const deliveryDate = parseIsoDate(input.delivery_date);
-  if (Number.isNaN(deliveryDate.getTime())) {
+  if (!isValidIsoDate(input.delivery_date)) {
     throw badRequest('INVALID_DELIVERY_DATE', 'delivery_date must be a valid date (YYYY-MM-DD)');
   }
-  const today = startOfUtcDay(new Date());
-  const earliestAllowed = new Date(today);
-  earliestAllowed.setUTCDate(earliestAllowed.getUTCDate() + minLeadDays);
-  if (deliveryDate.getTime() < earliestAllowed.getTime()) {
+  const today = calendarDateInTimeZone(new Date());
+  const earliestAllowed = addCalendarDays(today, minLeadDays);
+  if (input.delivery_date < earliestAllowed) {
     throw badRequest(
       'LEAD_TIME_TOO_SHORT',
       `Delivery date must be at least ${minLeadDays} day(s) from today`,
-      { minLeadTimeDays: minLeadDays },
+      { minLeadTimeDays: minLeadDays, earliestAllowed },
     );
   }
 
-  const lines = input.items.map((item) => {
+  const lines = mergedItems.map((item) => {
     const product = productsById.get(item.product_id)!;
     return { unitPrice: product.price, quantity: item.quantity, product };
   });
@@ -136,6 +210,9 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   );
   const deliveryFee = freeThreshold !== null && totals.subtotal >= freeThreshold ? 0 : totals.deliveryFee;
   const total = Math.round((totals.subtotal + deliveryFee) * 100) / 100;
+
+  // Reserve stock before persisting the order so we never oversell.
+  await decrementStockForLines(mergedItems);
 
   const orderReference = await generateUniqueReference();
   const trackingToken = generateTrackingToken();
@@ -242,39 +319,51 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     amount_paid: order.amount_paid,
   };
 
-  const { data: inserted, error: orderError } = await supabase
-    .from('orders')
-    .insert(orderPayload)
-    .select('*')
-    .single();
-  if (orderError) throw orderError;
+  try {
+    const { data: inserted, error: orderError } = await supabase
+      .from('orders')
+      .insert(orderPayload)
+      .select('*')
+      .single();
+    if (orderError) throw orderError;
 
-  const finalOrder = inserted as Order;
-  const itemsToInsert = orderItems.map((item) => ({
-    id: item.id,
-    order_id: finalOrder.id,
-    product_id: item.product_id,
-    product_name: item.product_name,
-    product_image_path: item.product_image_path,
-    unit_price: item.unit_price,
-    quantity: item.quantity,
-    line_subtotal: item.line_subtotal,
-  }));
-  const { data: insertedItems, error: itemsError } = await supabase
-    .from('order_items')
-    .insert(itemsToInsert)
-    .select('*');
-  if (itemsError) throw itemsError;
+    const finalOrder = inserted as Order;
+    const itemsToInsert = orderItems.map((item) => ({
+      id: item.id,
+      order_id: finalOrder.id,
+      product_id: item.product_id,
+      product_name: item.product_name,
+      product_image_path: item.product_image_path,
+      unit_price: item.unit_price,
+      quantity: item.quantity,
+      line_subtotal: item.line_subtotal,
+    }));
+    const { data: insertedItems, error: itemsError } = await supabase
+      .from('order_items')
+      .insert(itemsToInsert)
+      .select('*');
+    if (itemsError) throw itemsError;
 
-  const { error: historyError } = await supabase.from('order_status_history').insert({
-    id: randomUUID(),
-    order_id: finalOrder.id,
-    previous_status: null,
-    new_status: 'pending',
-  });
-  if (historyError) throw historyError;
+    const { error: historyError } = await supabase.from('order_status_history').insert({
+      id: randomUUID(),
+      order_id: finalOrder.id,
+      previous_status: null,
+      new_status: 'pending',
+    });
+    if (historyError) throw historyError;
 
-  return { order: finalOrder, items: (insertedItems ?? []) as OrderItem[], trackingToken };
+    return { order: finalOrder, items: (insertedItems ?? []) as OrderItem[], trackingToken };
+  } catch (err) {
+    // Roll stock back if order persistence fails after reservation.
+    for (const line of mergedItems) {
+      try {
+        await supabase.rpc('restore_product_stock', { p_id: line.product_id, p_qty: line.quantity });
+      } catch {
+        // Best-effort rollback; surface the original order error below.
+      }
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -571,6 +660,9 @@ export async function updateOrderStatus(
   if (config.useMockDb) {
     const updated = mockOrders.update(order.id, patch);
     mockOrders.appendHistory(historyEntry);
+    if (newStatus === 'cancelled') {
+      await restoreStockForOrder(order.id);
+    }
     return updated!;
   }
 
@@ -584,6 +676,9 @@ export async function updateOrderStatus(
     actor_id: historyEntry.actor_id,
     note: historyEntry.note,
   });
+  if (newStatus === 'cancelled') {
+    await restoreStockForOrder(order.id);
+  }
   return data as Order;
 }
 

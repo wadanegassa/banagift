@@ -27,38 +27,67 @@ export function saveCart(items: CartItem[]): void {
 function isCartItem(value: unknown): value is CartItem {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  return (
-    typeof v.productId === 'string' &&
-    typeof v.slug === 'string' &&
-    typeof v.name === 'string' &&
-    typeof v.price === 'number' &&
-    typeof v.quantity === 'number'
-  );
+  if (
+    typeof v.productId !== 'string' ||
+    typeof v.slug !== 'string' ||
+    typeof v.name !== 'string' ||
+    typeof v.price !== 'number' ||
+    typeof v.quantity !== 'number'
+  ) {
+    return false;
+  }
+  // Older carts may omit stockQuantity — normalize on load.
+  if (typeof v.stockQuantity !== 'number') {
+    v.stockQuantity = MAX_ITEM_QUANTITY;
+  }
+  if (typeof v.isAvailable !== 'boolean') {
+    v.isAvailable = true;
+  }
+  return true;
+}
+
+export function maxPurchasableQuantity(stockQuantity: number | undefined | null): number {
+  if (typeof stockQuantity !== 'number' || Number.isNaN(stockQuantity)) return MAX_ITEM_QUANTITY;
+  return Math.min(MAX_ITEM_QUANTITY, Math.max(0, Math.floor(stockQuantity)));
 }
 
 export function productToCartItem(product: ProductWithRelations, quantity = 1): CartItem {
   const primaryImage = [...product.images].sort((a, b) => a.sort_order - b.sort_order)[0];
+  const stockQuantity = typeof product.stock_quantity === 'number' ? product.stock_quantity : MAX_ITEM_QUANTITY;
   return {
     productId: product.id,
     slug: product.slug,
     name: product.name,
     price: product.price,
-    quantity,
+    quantity: clampQuantity(quantity, stockQuantity),
     imageUrl: primaryImage?.url ?? null,
-    isAvailable: product.is_available,
+    isAvailable: product.is_available && stockQuantity > 0,
+    stockQuantity,
   };
 }
 
 export function addItem(items: CartItem[], item: CartItem): CartItem[] {
   const existing = items.find((i) => i.productId === item.productId);
   if (existing) {
+    const stockCap = item.stockQuantity ?? existing.stockQuantity;
     return items.map((i) =>
       i.productId === item.productId
-        ? { ...i, quantity: clampQuantity(i.quantity + item.quantity) }
+        ? {
+            ...i,
+            stockQuantity: stockCap,
+            isAvailable: item.isAvailable,
+            quantity: clampQuantity(i.quantity + item.quantity, stockCap),
+          }
         : i,
     );
   }
-  return [...items, { ...item, quantity: clampQuantity(item.quantity) }];
+  return [
+    ...items,
+    {
+      ...item,
+      quantity: clampQuantity(item.quantity, item.stockQuantity),
+    },
+  ];
 }
 
 export function removeItem(items: CartItem[], productId: string): CartItem[] {
@@ -67,11 +96,15 @@ export function removeItem(items: CartItem[], productId: string): CartItem[] {
 
 export function updateQuantity(items: CartItem[], productId: string, quantity: number): CartItem[] {
   if (quantity <= 0) return removeItem(items, productId);
-  return items.map((i) => (i.productId === productId ? { ...i, quantity: clampQuantity(quantity) } : i));
+  return items.map((i) =>
+    i.productId === productId ? { ...i, quantity: clampQuantity(quantity, i.stockQuantity) } : i,
+  );
 }
 
-export function clampQuantity(quantity: number): number {
-  return Math.min(MAX_ITEM_QUANTITY, Math.max(1, Math.floor(quantity)));
+export function clampQuantity(quantity: number, stockQuantity?: number): number {
+  const max = maxPurchasableQuantity(stockQuantity ?? MAX_ITEM_QUANTITY);
+  if (max < 1) return 0;
+  return Math.min(max, Math.max(1, Math.floor(quantity)));
 }
 
 export function getSubtotal(items: CartItem[]): number {

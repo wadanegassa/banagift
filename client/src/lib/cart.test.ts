@@ -23,6 +23,7 @@ function makeItem(overrides: Partial<CartItem> = {}): CartItem {
     quantity: 1,
     imageUrl: null,
     isAvailable: true,
+    stockQuantity: 50,
     ...overrides,
   };
 }
@@ -111,6 +112,7 @@ describe('productToCartItem', () => {
       slug: 'garden-rose-bouquet',
       description: 'desc',
       price: 68,
+      stock_quantity: 12,
       is_available: true,
       is_featured: true,
       archived_at: null,

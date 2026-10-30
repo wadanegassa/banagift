@@ -53,6 +53,47 @@ describe('POST /api/orders', () => {
     expect(res.body.error.details.items[0].product_id).toBe(UNAVAILABLE_PRODUCT_ID);
   });
 
+  it('rejects orders that request more units than stock allows', async () => {
+    // Hostess Welcome Tray is seeded with stock_quantity = 3
+    const LOW_STOCK_ID = 'b1000000-0000-4000-8000-000000000012';
+    const res = await request(app)
+      .post('/api/orders')
+      .send(validOrderPayload({ items: [{ product_id: LOW_STOCK_ID, quantity: 10 }] }));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INSUFFICIENT_STOCK');
+  });
+
+  it('decrements stock on order and restores it when cancelled', async () => {
+    const LOW_STOCK_ID = 'b1000000-0000-4000-8000-000000000012';
+
+    const before = await request(app).get('/api/products/hostess-welcome-tray');
+    expect(before.status).toBe(200);
+    const stockBefore = before.body.data.stock_quantity as number;
+
+    const created = await request(app)
+      .post('/api/orders')
+      .send(validOrderPayload({ items: [{ product_id: LOW_STOCK_ID, quantity: 1 }] }));
+    expect(created.status).toBe(201);
+
+    const afterOrder = await request(app).get('/api/products/hostess-welcome-tray');
+    expect(afterOrder.body.data.stock_quantity).toBe(stockBefore - 1);
+
+    const list = await request(app)
+      .get('/api/admin/orders?limit=1')
+      .set('Authorization', `Bearer ${ADMIN_TOKEN}`);
+    const orderId = list.body.data[0].id as string;
+
+    const cancel = await request(app)
+      .patch(`/api/admin/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${ADMIN_TOKEN}`)
+      .send({ status: 'cancelled' });
+    expect(cancel.status).toBe(200);
+
+    const afterCancel = await request(app).get('/api/products/hostess-welcome-tray');
+    expect(afterCancel.body.data.stock_quantity).toBe(stockBefore);
+  });
+
   it('rejects orders referencing a non-existent product', async () => {
     const res = await request(app)
       .post('/api/orders')

@@ -28,6 +28,7 @@ const sampleItem: CartItem = {
   quantity: 3,
   imageUrl: null,
   isAvailable: true,
+  stockQuantity: 15,
 };
 
 describe('Navbar', () => {

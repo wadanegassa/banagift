@@ -20,6 +20,7 @@ export const productFormSchema = z.object({
   category_id: z.string().optional(),
   description: z.string().trim().max(5000).optional(),
   price: z.coerce.number().min(0, 'Price must be 0 or more'),
+  stock_quantity: z.coerce.number().int().min(0, 'Stock must be 0 or more'),
   is_available: z.boolean(),
   is_featured: z.boolean(),
 });
@@ -49,6 +50,7 @@ export function ProductForm({ categories, initialProduct, isSubmitting, onSubmit
       category_id: initialProduct?.category_id ?? '',
       description: initialProduct?.description ?? '',
       price: initialProduct?.price ?? 0,
+      stock_quantity: initialProduct?.stock_quantity ?? 10,
       is_available: initialProduct?.is_available ?? true,
       is_featured: initialProduct?.is_featured ?? false,
     },
@@ -81,7 +83,7 @@ export function ProductForm({ categories, initialProduct, isSubmitting, onSubmit
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div>
           <Label htmlFor="category_id">Category</Label>
           <Select id="category_id" {...register('category_id')}>
@@ -95,10 +97,19 @@ export function ProductForm({ categories, initialProduct, isSubmitting, onSubmit
         </div>
         <div>
           <Label htmlFor="price" required>
-            Price
+            Price (ETB)
           </Label>
           <Input id="price" type="number" min={0} step="0.01" {...register('price')} />
           {errors.price && <p className="mt-1 text-xs text-danger">{errors.price.message}</p>}
+        </div>
+        <div>
+          <Label htmlFor="stock_quantity" required>
+            Stock
+          </Label>
+          <Input id="stock_quantity" type="number" min={0} step="1" {...register('stock_quantity')} />
+          {errors.stock_quantity && (
+            <p className="mt-1 text-xs text-danger">{errors.stock_quantity.message}</p>
+          )}
         </div>
       </div>
 

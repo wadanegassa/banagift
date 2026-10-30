@@ -13,7 +13,7 @@ import { usePublicSettings } from '@/hooks/useSettings';
 import { useCart } from '@/hooks/useCart';
 import { useToast } from '@/components/ui/Toast';
 import { formatMoney } from '@/lib/format';
-import { productToCartItem } from '@/lib/cart';
+import { maxPurchasableQuantity, productToCartItem } from '@/lib/cart';
 
 export function ProductDetail() {
   const { slug } = useParams<{ slug: string }>();
@@ -26,6 +26,7 @@ export function ProductDetail() {
 
   const currency = settings?.currency ?? 'ETB';
   const product = data?.data;
+  const maxQty = maxPurchasableQuantity(product?.stock_quantity);
 
   const { data: relatedRes } = useProducts(
     { category: product?.category?.slug, limit: 5 },
@@ -111,17 +112,21 @@ export function ProductDetail() {
           <h1 className="mt-2 font-serif text-3xl text-text sm:text-4xl">{product.name}</h1>
           <p className="mt-3 text-xl font-medium text-accent sm:text-2xl">{formatMoney(product.price, currency)}</p>
 
-          {!product.is_available && (
+          {!product.is_available || maxQty < 1 ? (
             <Badge tone="neutral" className="mt-4">
               Currently unavailable
             </Badge>
+          ) : (
+            <p className="mt-4 text-sm text-muted">
+              {maxQty <= 5 ? `Only ${maxQty} left in stock` : `${maxQty} in stock`}
+            </p>
           )}
 
           <p className="mt-5 whitespace-pre-line text-sm leading-relaxed text-muted sm:mt-6 sm:text-base">
             {product.description}
           </p>
 
-          {product.is_available ? (
+          {product.is_available && maxQty >= 1 ? (
             <div className="mobile-sticky-actions mt-8">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center border border-border bg-white">
@@ -134,11 +139,11 @@ export function ProductDetail() {
                     <Minus className="h-4 w-4" />
                   </button>
                   <span className="flex h-11 w-12 items-center justify-center text-sm" aria-live="polite">
-                    {quantity}
+                    {Math.min(quantity, maxQty)}
                   </span>
                   <button
                     type="button"
-                    onClick={() => setQuantity((q) => Math.min(50, q + 1))}
+                    onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
                     aria-label="Increase quantity"
                     className="flex h-11 w-11 items-center justify-center hover:bg-surface"
                   >

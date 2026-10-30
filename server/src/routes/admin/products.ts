@@ -74,6 +74,7 @@ const createBodySchema = z
     slug: z.string().trim().regex(slugPattern, 'slug must be lowercase, alphanumeric, hyphen-separated'),
     description: z.string().trim().max(5000).optional().default(''),
     price: z.number().min(0),
+    stock_quantity: z.number().int().min(0).optional().default(0),
     is_available: z.boolean().optional().default(true),
     is_featured: z.boolean().optional().default(false),
   })
@@ -97,6 +98,7 @@ const updateBodySchema = z
     slug: z.string().trim().regex(slugPattern).optional(),
     description: z.string().trim().max(5000).optional(),
     price: z.number().min(0).optional(),
+    stock_quantity: z.number().int().min(0).optional(),
     is_available: z.boolean().optional(),
     is_featured: z.boolean().optional(),
   })

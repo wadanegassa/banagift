@@ -1,5 +1,6 @@
 -- DEMO SEED DATA — for development only. Do not run against production.
 -- Localized for Ethiopia: ETB prices, phone-first copy, free-text delivery locations.
+-- Includes stock_quantity so ordering + inventory flows work out of the box.
 
 INSERT INTO public.business_settings (key, value) VALUES
   ('business_name', '"BanaGifts"'::jsonb),
@@ -25,34 +26,35 @@ INSERT INTO public.categories (id, name, slug, description, image_path, sort_ord
   ('a1000000-0000-4000-8000-000000000007', 'Personalized', 'personalized', 'Items we can arrange with a personal touch.', 'demo/categories/personalized.jpg', 7, true)
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO public.products (id, category_id, name, slug, description, price, is_available, is_featured) VALUES
+INSERT INTO public.products (id, category_id, name, slug, description, price, stock_quantity, is_available, is_featured) VALUES
   ('b1000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001', 'Garden Rose Bouquet', 'garden-rose-bouquet',
-   'A generous hand-tied bouquet of garden roses in soft blush and ivory, finished with linen ribbon.', 2800.00, true, true),
+   'A generous hand-tied bouquet of garden roses in soft blush and ivory, finished with linen ribbon.', 2800.00, 15, true, true),
   ('b1000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000001', 'Wild Meadow Arrangement', 'wild-meadow-arrangement',
-   'Seasonal wildflowers loosely arranged in a ceramic vessel — airy, informal, and bright.', 2200.00, true, true),
+   'Seasonal wildflowers loosely arranged in a ceramic vessel — airy, informal, and bright.', 2200.00, 20, true, true),
   ('b1000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000002', 'Evening Indulgence Box', 'evening-indulgence-box',
-   'Dark chocolate, honeycomb, and a small candle nestled in kraft and tissue.', 3200.00, true, true),
+   'Dark chocolate, honeycomb, and a small candle nestled in kraft and tissue.', 3200.00, 15, true, true),
   ('b1000000-0000-4000-8000-000000000004', 'a1000000-0000-4000-8000-000000000002', 'Morning Ritual Set', 'morning-ritual-set',
-   'Loose-leaf tea, honey spoon, and a linen napkin — a gentle start.', 1800.00, true, false),
+   'Loose-leaf tea, honey spoon, and a linen napkin — a gentle start.', 1800.00, 12, true, false),
   ('b1000000-0000-4000-8000-000000000005', 'a1000000-0000-4000-8000-000000000003', 'Single Origin Truffles', 'single-origin-truffles',
-   'Twelve hand-rolled truffles from a single cacao origin, boxed for gifting.', 1500.00, true, true),
+   'Twelve hand-rolled truffles from a single cacao origin, boxed for gifting.', 1500.00, 20, true, true),
   ('b1000000-0000-4000-8000-000000000006', 'a1000000-0000-4000-8000-000000000003', 'Caramel Sea Salt Collection', 'caramel-sea-salt-collection',
-   'Soft caramels finished with flaky sea salt in a slim gift tin.', 1200.00, true, false),
+   'Soft caramels finished with flaky sea salt in a slim gift tin.', 1200.00, 12, true, false),
   ('b1000000-0000-4000-8000-000000000007', 'a1000000-0000-4000-8000-000000000004', 'Birthday Bloom & Treat', 'birthday-bloom-and-treat',
-   'A cheerful mixed bouquet paired with a small cake-slice chocolate bar.', 2600.00, true, true),
+   'A cheerful mixed bouquet paired with a small cake-slice chocolate bar.', 2600.00, 20, true, true),
   ('b1000000-0000-4000-8000-000000000008', 'a1000000-0000-4000-8000-000000000005', 'Anniversary Keepsake Duo', 'anniversary-keepsake-duo',
-   'Two stem roses with a bottle of sparkling non-alcoholic aperitif and a handwritten card option.', 3800.00, true, true),
+   'Two stem roses with a bottle of sparkling non-alcoholic aperitif and a handwritten card option.', 3800.00, 15, true, true),
   ('b1000000-0000-4000-8000-000000000009', 'a1000000-0000-4000-8000-000000000006', 'Graduate Desk Set', 'graduate-desk-set',
-   'A leather notebook, pen, and congratulatory card arranged in a presentation box.', 2400.00, true, false),
+   'A leather notebook, pen, and congratulatory card arranged in a presentation box.', 2400.00, 12, true, false),
   ('b1000000-0000-4000-8000-000000000010', 'a1000000-0000-4000-8000-000000000007', 'Monogram Candle & Match Set', 'monogram-candle-match-set',
-   'Soy candle with optional monogram on the lid card, plus a brass match striker.', 1600.00, true, false),
+   'Soy candle with optional monogram on the lid card, plus a brass match striker.', 1600.00, 12, true, false),
   ('b1000000-0000-4000-8000-000000000011', 'a1000000-0000-4000-8000-000000000004', 'Celebration Balloon Cluster', 'celebration-balloon-cluster',
-   'A refined cluster of matte balloons with a weight — available while stock lasts.', 900.00, false, false),
+   'A refined cluster of matte balloons with a weight — available while stock lasts.', 900.00, 0, false, false),
   ('b1000000-0000-4000-8000-000000000012', 'a1000000-0000-4000-8000-000000000002', 'Hostess Welcome Tray', 'hostess-welcome-tray',
-   'Crackers, olives, and a small cheese knife on a reusable wooden board.', 2700.00, true, false)
+   'Crackers, olives, and a small cheese knife on a reusable wooden board.', 2700.00, 3, true, false)
 ON CONFLICT (id) DO UPDATE SET
   price = EXCLUDED.price,
   description = EXCLUDED.description,
+  stock_quantity = EXCLUDED.stock_quantity,
   is_available = EXCLUDED.is_available,
   is_featured = EXCLUDED.is_featured,
   updated_at = now();
